@@ -1,0 +1,35 @@
+{
+  "name": "@bsky-bots/source",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {},
+  "private": true,
+  "devDependencies": {
+    "@nx/esbuild": "20.4.0",
+    "@nx/eslint-plugin": "^20.4.0",
+    "@nx/js": "^20.4.0",
+    "@nx/node": "^20.4.0",
+    "@swc-node/register": "~1.9.1",
+    "@swc/core": "~1.5.7",
+    "@swc/helpers": "~0.5.11",
+    "@types/node": "~18.16.9",
+    "esbuild": "^0.19.2",
+    "nx": "20.4.0",
+    "prettier": "^2.6.2",
+    "tslib": "^2.3.0",
+    "typescript": "~5.7.2"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "dependencies": {
+    "@atproto/api": "^0.13.32",
+    "dotenv": "^16.4.7",
+    "node-fetch": "^3.3.2",
+    "puppeteer": "^24.1.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "ts-node": "^10.9.2"
+  }
+}
