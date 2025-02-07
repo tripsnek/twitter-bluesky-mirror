@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 
 dotenv.config();
 
-const urlPre = CrossPostAgent.SCRAPE_SOURCE == 'nitter' ? 'https://nitter.net' : 'https://x.com';
+const urlPre = CrossPostAgent.SCRAPE_SOURCE == 'nitter' ? 'https://' + process.env.NITTER_HOST : 'https://x.com';
 
 interface BlueskyCredentials {
   identifier: string;
