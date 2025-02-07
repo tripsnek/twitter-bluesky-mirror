@@ -1,6 +1,11 @@
 import * as dotenv from 'dotenv';
 import { CrossPostAgent } from './cross-post-agent';
 import { AgentConfig } from './types';
+import { BlueskyService } from './services/bluesky-service';
+import { TwitterScraperService } from './services/twitter-scraper-service';
+import { NitterScraperService } from './services/nitter-scraper-service';
+import { ScraperService } from './services/scraper-service';
+import fs from 'fs/promises';
 
 dotenv.config();
 
@@ -23,6 +28,7 @@ const agentConfig: AgentConfig = {
 };
 
 function loadMirrorConfigurations(): AccountPair[] {
+
   const pairs: AccountPair[] = [];
   let configIndex = 1;
 
@@ -51,13 +57,33 @@ function loadMirrorConfigurations(): AccountPair[] {
   return pairs;
 }
 
-const agent = new CrossPostAgent(agentConfig);
+runAgents();
 
-process.on('SIGINT', async () => {
-  console.log('Cleaning up...');
-  await agent.cleanup();
-  process.exit(0);
-});
+async function runAgents() {
+  const scraperService =
+    CrossPostAgent.SCRAPE_SOURCE === 'twitter'
+      ? new TwitterScraperService()
+      : new NitterScraperService();
+  const blueskyService = new BlueskyService();
 
-agent.start().catch(console.error);
+  await Promise.all([
+    scraperService.initialize(),
+    blueskyService.initialize(agentConfig.accountPairs),
+  ]);
+
+  // Ensure storage directories exist
+  for (const pair of agentConfig.accountPairs) {
+    await fs.mkdir(pair.storageDir, { recursive: true });
+  }
+
+  const agent = new CrossPostAgent(agentConfig, scraperService, blueskyService);
+
+  process.on('SIGINT', async () => {
+    console.log('Cleaning up...');
+    await agent.cleanup();
+    process.exit(0);
+  });
+
+  agent.start().catch(console.error);
+}
 

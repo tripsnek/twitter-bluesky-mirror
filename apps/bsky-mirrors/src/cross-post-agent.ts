@@ -9,32 +9,18 @@ import { TwitterScraperService } from './services/twitter-scraper-service';
 
 export class CrossPostAgent {
   private readonly config: AgentConfig;
-  private readonly scraperService: ScraperService;
-  private readonly blueskyService: BlueskyService;
+
   private lastCheckedTweets: Map<string, TweetData[]>;
 
   public static SCRAPE_SOURCE = 'nitter';
   // public static SCRAPE_SOURCE = 'twitter';
 
 
-  constructor(config: AgentConfig) {
+  constructor(config: AgentConfig, public scraperService: ScraperService, public blueskyService: BlueskyService) {
     this.config = config;
     // this.twitterService = new TwitterScraperService();
-    this.scraperService = CrossPostAgent.SCRAPE_SOURCE === 'twitter' ? new TwitterScraperService() : new NitterScraperService();
-    this.blueskyService = new BlueskyService();
+
     this.lastCheckedTweets = new Map();
-  }
-
-  async initialize(): Promise<void> {
-    await Promise.all([
-      this.scraperService.initialize(),
-      this.blueskyService.initialize(this.config.accountPairs),
-    ]);
-
-    // Ensure storage directories exist
-    for (const pair of this.config.accountPairs) {
-      await fs.mkdir(pair.storageDir, { recursive: true });
-    }
   }
 
   private async findNewTweets(latestTweets: TweetData[], sourceAccount: string): Promise<TweetData[]> {
@@ -54,7 +40,7 @@ export class CrossPostAgent {
   async checkAndPost(): Promise<void> {
     try {
       for (const pair of this.config.accountPairs) {
-        console.log('checkAndPost ' + pair.twitter);
+        console.log('=====   checkAndPost ' + pair.twitter + '   =====');
         const latestTweets = await this.scraperService.getLatestTweets(pair.twitter);
         const newTweets = await this.findNewTweets(latestTweets, pair.twitter);
 
@@ -121,7 +107,6 @@ export class CrossPostAgent {
     }
 
   async start(): Promise<void> {
-    await this.initialize();
     await this.checkAndPost();
     setInterval(() => this.checkAndPost(), this.config.CHECK_INTERVAL_MS);
     console.log(`Cross-posting agent started with ${this.config.CHECK_INTERVAL_MS / 1000}s interval`);
