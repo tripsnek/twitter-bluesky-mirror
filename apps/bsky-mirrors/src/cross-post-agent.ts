@@ -9,7 +9,7 @@ import { TwitterScraperService } from './services/twitter-scraper-service';
 
 export class CrossPostAgent {
   private readonly config: AgentConfig;
-  private readonly twitterService: ScraperService;
+  private readonly scraperService: ScraperService;
   private readonly blueskyService: BlueskyService;
   private lastCheckedTweets: Map<string, TweetData[]>;
 
@@ -20,14 +20,14 @@ export class CrossPostAgent {
   constructor(config: AgentConfig) {
     this.config = config;
     // this.twitterService = new TwitterScraperService();
-    this.twitterService = CrossPostAgent.SCRAPE_SOURCE === 'twitter' ? new TwitterScraperService() : new NitterScraperService();
+    this.scraperService = CrossPostAgent.SCRAPE_SOURCE === 'twitter' ? new TwitterScraperService() : new NitterScraperService();
     this.blueskyService = new BlueskyService();
     this.lastCheckedTweets = new Map();
   }
 
   async initialize(): Promise<void> {
     await Promise.all([
-      this.twitterService.initialize(),
+      this.scraperService.initialize(),
       this.blueskyService.initialize(this.config.accountPairs),
     ]);
 
@@ -55,7 +55,7 @@ export class CrossPostAgent {
     try {
       for (const pair of this.config.accountPairs) {
         console.log('checkAndPost ' + pair.twitter);
-        const latestTweets = await this.twitterService.getLatestTweets(pair.twitter);
+        const latestTweets = await this.scraperService.getLatestTweets(pair.twitter);
         const newTweets = await this.findNewTweets(latestTweets, pair.twitter);
 
         console.log(`checkAndPost(): ${newTweets.length} of ${latestTweets.length} ${pair.twitter} tweets are new`);
@@ -128,6 +128,6 @@ export class CrossPostAgent {
   }
 
   async cleanup(): Promise<void> {
-    await this.twitterService.cleanup();
+    await this.scraperService.cleanup();
   }
 }
