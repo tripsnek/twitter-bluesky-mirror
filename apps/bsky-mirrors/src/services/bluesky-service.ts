@@ -119,6 +119,14 @@ export class BlueskyService {
 
     console.log('Posting tweet ' + tweet.text);
     await new BlueskyPoster(bskyAgent).createPost(tweet);
+
+    //add to recent posts
+    const recentPosts = this.recentPosts.get(sourceAccount);
+    recentPosts?.unshift(tweet.text);
+    if(recentPosts){
+      while(recentPosts?.length>0)
+        recentPosts.pop();
+    }
   }
 }
 
