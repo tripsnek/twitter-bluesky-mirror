@@ -1,4 +1,4 @@
-import { AgentConfig, TweetData } from './types';
+import { AccountPair, AgentConfig, TweetData } from './types';
 import { StorageService } from './services/storage-service';
 // import { TwitterScraperService } from './services/twitter-scraper-service';
 import { BlueskyService } from './services/bluesky-service';
@@ -37,9 +37,9 @@ export class CrossPostAgent {
     return newTweets;
   }
 
-  async checkAndPost(): Promise<void> {
+  async checkAndPost(pair: AccountPair): Promise<void> {
     try {
-      for (const pair of this.config.accountPairs) {
+      // for (const pair of this.config.accountPairs) {
         console.log('=====   checkAndPost ' + pair.twitter + '   =====');
         const latestTweets = await this.scraperService.getLatestTweets(pair.twitter);
         const newTweets = await this.findNewTweets(latestTweets, pair.twitter);
@@ -76,7 +76,7 @@ export class CrossPostAgent {
           }
           await StorageService.saveTweet(tweet, pair.storageDir);
         }
-      }
+      // }
     } catch (error) {
       console.error('Error in check and post cycle:', error);
     }
@@ -106,10 +106,17 @@ export class CrossPostAgent {
       }
     }
 
-  async start(): Promise<void> {
-    await this.checkAndPost();
-    setInterval(() => this.checkAndPost(), this.config.CHECK_INTERVAL_MS);
-    console.log(`Cross-posting agent started with ${this.config.CHECK_INTERVAL_MS / 1000}s interval`);
+  async start(): Promise<void> { 
+    const numAccts = this.config.accountPairs.length;
+    let pairInd = 0;
+    await this.checkAndPost(this.config.accountPairs[pairInd++]);
+    const subinterval = this.config.CHECK_INTERVAL_MS/numAccts;
+    setInterval(() => {
+      if(pairInd>=numAccts) pairInd = 0;
+      this.checkAndPost(this.config.accountPairs[pairInd]);
+      pairInd+=1;
+    }, subinterval);
+    console.log(`Cross-posting agent started with ${this.config.CHECK_INTERVAL_MS / 1000}s total interval, ${subinterval/1000} subinterval`);
   }
 
   async cleanup(): Promise<void> {
