@@ -79,7 +79,7 @@ export class NitterScraperService implements ScraperService {
     //nitter links are already resolved
     const resolvedLinks: string[] = [];
     for (const link of videoLinks) {
-      resolvedLinks.push(link.replace('piped.video','youtube.com'))
+      resolvedLinks.push(link.replace('piped.video', 'youtube.com'));
     }
     return resolvedLinks;
   }
@@ -162,44 +162,44 @@ export class NitterScraperService implements ScraperService {
         'extractTweetsFromPage():  Extracting tweets from ' + nitterUrl
       );
     return await page.evaluate((nitterUrl: string) => {
-      if(this.DEBUG)
-        console.log('Starting tweet extraction...');
+      if (this.DEBUG) console.log('Starting tweet extraction...');
       const extractedTweets: any[] = [];
 
       const tweetElements = document.querySelectorAll('.timeline-item');
-      if(this.DEBUG)
-        console.log(`Found ${tweetElements.length} tweets`);
+      if (this.DEBUG) console.log(`Found ${tweetElements.length} tweets`);
 
       tweetElements.forEach((tweet, index) => {
-        if(this.DEBUG)
-          console.log(`Processing tweet ${index + 1}`);
+        if (this.DEBUG) console.log(`Processing tweet ${index + 1}`);
         // Extract text content
         const textElement = tweet.querySelector('.tweet-content');
         const timeElement = tweet.querySelector('.tweet-date');
+        const tweetLink = tweet.querySelector('.tweet-link');
 
-      // Process text and links
-      let text = '';
-      if (textElement) {
-        // Get all child nodes to handle both text and links
-        const childNodes = Array.from(textElement.childNodes);
-        childNodes.forEach((node) => {
-          if (node.nodeType === Node.TEXT_NODE) {
-            // Handle plain text
-            text += node.textContent;
-          } else if (node instanceof HTMLAnchorElement) {
-            // Handle links - format for Bluesky rich text
-            const href = node.href;
-            const displayText = node.textContent;
-            // Only add the link if we have both href and display text
-            if (href && displayText) {
-              // Convert relative URLs to absolute if necessary
-              const absoluteUrl = href.startsWith('http') ? href : new URL(href, window.location.origin).href;
-              text += absoluteUrl;
+        // Process text and links
+        let text = '';
+        if (textElement) {
+          // Get all child nodes to handle both text and links
+          const childNodes = Array.from(textElement.childNodes);
+          childNodes.forEach((node) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+              // Handle plain text
+              text += node.textContent;
+            } else if (node instanceof HTMLAnchorElement) {
+              // Handle links - format for Bluesky rich text
+              const href = node.href;
+              const displayText = node.textContent;
+              // Only add the link if we have both href and display text
+              if (href && displayText) {
+                // Convert relative URLs to absolute if necessary
+                const absoluteUrl = href.startsWith('http')
+                  ? href
+                  : new URL(href, window.location.origin).href;
+                text += absoluteUrl;
+              }
             }
-          }
-        });
-      }
-      text = text.replace('piped.video','youtube.com');
+          });
+        }
+        text = text.replace('piped.video', 'youtube.com');
 
         // Extract images
         const images: string[] = [];
@@ -231,7 +231,7 @@ export class NitterScraperService implements ScraperService {
         });
 
         let timestamp = '';
-  
+
         if (timeElement) {
           // First try to get the timestamp from the title attribute
           const titleTimestamp = timeElement.getAttribute('title');
@@ -242,7 +242,7 @@ export class NitterScraperService implements ScraperService {
             // Fall back to relative time parsing
             const relativeTime = timeElement.textContent?.trim() || '';
             const now = new Date();
-  
+
             if (relativeTime.includes('h')) {
               // Handle "2h" format
               const hours = parseInt(relativeTime);
@@ -258,16 +258,22 @@ export class NitterScraperService implements ScraperService {
               const minutes = parseInt(relativeTime);
               now.setMinutes(now.getMinutes() - minutes);
               timestamp = now.toISOString();
-            } else if (relativeTime.includes('Feb') || relativeTime.includes('Jan')) {
+            } else if (
+              relativeTime.includes('Feb') ||
+              relativeTime.includes('Jan')
+            ) {
               // Handle "Feb 3" format
               const currentYear = new Date().getFullYear();
-              timestamp = new Date(`${relativeTime}, ${currentYear}`).toISOString();
+              timestamp = new Date(
+                `${relativeTime}, ${currentYear}`
+              ).toISOString();
             }
           }
         }
 
-        if (text && timestamp) {
-          const id = `${text.slice(0, 20)}_${timestamp}`;
+        if (text && timestamp && tweetLink) {
+          const id = `${tweetLink.getAttribute('href')}`;
+
           const extracted = {
             id: id,
             text: text,
@@ -277,13 +283,13 @@ export class NitterScraperService implements ScraperService {
             sourceAccount: nitterUrl,
             postedToBluesky: false,
           };
-          
+
           extractedTweets.push(extracted);
         }
       });
 
       // console.log('extracted ' + extractedTweets.length);
-      
+
       return extractedTweets.slice(0, 10);
     }, nitterUrl);
   }
