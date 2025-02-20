@@ -199,7 +199,7 @@ export class NitterScraperService implements ScraperService {
             }
           });
         }
-        text = text.replace('piped.video', 'youtube.com').replace('nitter.net','x.com');
+        text = text.replace('piped.video', 'youtube.com').replaceAll('nitter.net','x.com');
 
         // Extract images
         const images: string[] = [];
