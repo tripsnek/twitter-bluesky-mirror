@@ -27,154 +27,131 @@ export class TruthSocialScraperService implements ScraperService {
     if (!this.browser) {
       throw new Error('Browser not initialized');
     }
-
+  
     const page = await this.browser.newPage();
     try {
       await page.setViewport({ width: 1280, height: 800 });
       await page.setUserAgent(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       );
-
+  
       await page.goto(truthProfileUrl, {
         waitUntil: ['domcontentloaded', 'load'],
         timeout: 30000,
       });
-
-      // Wait for posts to load
-      await page.waitForSelector('.status', {
+  
+      // Wait for initial posts to load
+      await page.waitForSelector('[data-testid="status"]', {
         timeout: 10000,
       });
-
-      if (this.DEBUG) {
-        await page.screenshot({ path: 'truthsocial-page.png' });
+  
+      // Get initial posts
+      const initialTweets = await this.extractTweetsFromPage(page, truthProfileUrl);
+  
+      // Do one gentle scroll
+      await page.evaluate(async () => {
+        // Scroll just enough to trigger a bit more content loading - about 1000px
+        window.scrollTo(0, 1000);
+        
+        // Wait a moment for content to load
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      });
+  
+      // Get posts after scrolling
+      const moreTweets = await this.extractTweetsFromPage(page, truthProfileUrl);
+  
+      // Combine and deduplicate tweets
+      const allTweets = [...initialTweets];
+      for (const tweet of moreTweets) {
+        if (!allTweets.find(t => t.id === tweet.id)) {
+          allTweets.push(tweet);
+        }
       }
-
-      await page.content();
-      const tweets = await this.extractTweetsFromPage(page, truthProfileUrl);
-
-      // Update last scrape time
-      this.lastScrapeTime.set(truthProfileUrl, new Date());
-
-      return tweets;
+  
+      if (this.DEBUG) {
+        console.log(`Found ${allTweets.length} total tweets`);
+      }
+  
+      // Sort by timestamp, newest first
+      return allTweets.sort((a, b) => {
+        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+      });
+  
     } finally {
       await page.close();
     }
   }
-
+  
   private async extractTweetsFromPage(
     page: any,
     profileUrl: string
   ): Promise<TweetData[]> {
-    // Forward console messages from the browser
-    page.on('console', (msg: { text: () => any }) =>
-      this.DEBUG && console.log('Browser console:', msg.text())
-    );
-    page.on('pageerror', (error: { message: any }) =>
-      this.DEBUG && console.log('Browser error:', error.message)
-    );
-
-    if (this.DEBUG) {
-      console.log('extractTweetsFromPage(): Extracting posts from ' + profileUrl);
-    }
-
     return await page.evaluate((profileUrl: string) => {
       const extractedTweets: any[] = [];
       
-      // Truth Social posts have the class 'status'
-      const postElements = document.querySelectorAll('.status');
+      // Get all status divs
+      const postElements = document.querySelectorAll('[data-testid="status"]');
       
       postElements.forEach((post) => {
         try {
-          // Extract account info
-          const accountElement = post.querySelector('[data-testid="account"]');
-          const username = accountElement?.querySelector('[style="direction: ltr;"]')?.textContent?.trim() || '';
-          
-          // Skip re-truths if they're from other accounts
-          const isSelfRetruth = !post.querySelector('[role="status-info"] [class*="text-xs"]')?.textContent?.includes(' ReTruthed');
-          
+          // Get the wrapper
+          const wrapper = post.querySelector('.status__wrapper');
+          if (!wrapper) return;
+                  
+          // Skip retweets
+          const retweetButton = wrapper.querySelector('button[title="ReTruth"].active');
+          if (retweetButton) return;
+  
           // Extract post content
-          const contentElement = post.querySelector('[data-markup="true"]');
+          const contentElement = wrapper.querySelector('[data-markup="true"]');
           let text = contentElement?.textContent?.trim() || '';
           
-          // Extract post timestamp
-          const timeElement = post.querySelector('time');
+          // Extract timestamp
+          const timeElement = wrapper.querySelector('time[title]');
           const timestamp = timeElement?.getAttribute('title') || '';
           
-          // Extract post link/ID
-          const postLink = post.querySelector('a[href*="posts"]')?.getAttribute('href') || '';
+          // Extract ID
+          const postLink = wrapper.querySelector('a[href*="posts"]')?.getAttribute('href') || '';
           const id = postLink ? postLink.split('/').pop() || '' : '';
           
-          // Extract images
+          // Extract media
           const images: string[] = [];
-          const imageElements = post.querySelectorAll('.media-gallery__item-thumbnail img');
-          imageElements.forEach((img: Element) => {
+          wrapper.querySelectorAll('.media-gallery img').forEach((img: Element) => {
             const src = (img as HTMLImageElement).src;
             if (src) {
-              // Get the full resolution image instead of thumbnail
               const fullResUrl = src.replace('/small/', '/original/');
               images.push(fullResUrl);
             }
           });
-          
-          // Extract videos
+  
           const videos: string[] = [];
-          const videoElement = post.querySelector('video');
-          if (videoElement) {
-            const sources = videoElement.querySelectorAll('source');
-            // Use the highest quality video source
+          wrapper.querySelectorAll('video').forEach((video: Element) => {
+            const sources = video.querySelectorAll('source');
             if (sources.length > 0) {
-              // Sort sources by quality if available
-              const sortedSources = Array.from(sources).sort((a, b) => {
-                const qualityA = a.getAttribute('data-quality') || '';
-                const qualityB = b.getAttribute('data-quality') || '';
-                // Higher resolution first (720p before 480p)
-                return qualityB.localeCompare(qualityA);
-              });
-              
-              const videoUrl = sortedSources[0]?.getAttribute('src') || '';
-              if (videoUrl) {
-                videos.push(videoUrl);
-              }
-            }
-          }
-          
-          // Extract external links/cards
-          const linkCards = post.querySelectorAll('.status-card--link');
-          linkCards.forEach((card: Element) => {
-            const linkElement = card as HTMLAnchorElement;
-            const linkUrl = linkElement.href;
-            if (linkUrl && !text.includes(linkUrl)) {
-              // Append link to text if not already in text
-              text += ` ${linkUrl}`;
+              const videoUrl = sources[0]?.getAttribute('src');
+              if (videoUrl) videos.push(videoUrl);
             }
           });
-          
-          // Only process the post if it has text and a timestamp
-          if (text && timestamp && id) {
-            // Convert timestamp to ISO format
-            const isoTimestamp = new Date(timestamp).toISOString();
-            
-            const extracted = {
-              id: id,
-              text: text,
-              timestamp: isoTimestamp,
-              images: images,
-              videos: videos,
+  
+          if (id) {
+            extractedTweets.push({
+              id,
+              text: text || '[No Text Content]',
+              timestamp: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString(),
+              images,
+              videos,
               sourceAccount: profileUrl,
-              postedToBluesky: false,
-            };
-            
-            extractedTweets.push(extracted);
+              postedToBluesky: false
+            });
           }
         } catch (error) {
-          console.error('Error extracting post data:', error);
+          console.error('Error extracting post:', error);
         }
       });
       
-      return extractedTweets.slice(0, 10);
+      return extractedTweets;
     }, profileUrl);
   }
-  
   // Helper method to extract username from profile URL
   private extractUsernameFromUrl(url: string): string {
     const match = url.match(/@([^/]+)/);
