@@ -6,10 +6,11 @@ import { TwitterScraperService } from './services/twitter-scraper-service';
 import { NitterScraperService } from './services/nitter-scraper-service';
 import { ScraperService } from './services/scraper-service';
 import fs from 'fs/promises';
+import { TruthSocialScraperService } from './services/truth-social-scraper.service';
 
 dotenv.config();
 
-const urlPre = CrossPostAgent.SCRAPE_SOURCE == 'nitter' ? 'https://' + process.env.NITTER_HOST : 'https://x.com';
+const urlPre = CrossPostAgent.SCRAPE_SOURCE == 'nitter' ? 'https://' + process.env.NITTER_HOST : CrossPostAgent.SCRAPE_SOURCE=='truthsocial' ? 'https://truthsocial.com' : 'https://x.com';
 
 interface BlueskyCredentials {
   identifier: string;
@@ -63,7 +64,7 @@ async function runAgents() {
   const scraperService =
     CrossPostAgent.SCRAPE_SOURCE === 'twitter'
       ? new TwitterScraperService()
-      : new NitterScraperService();
+      : CrossPostAgent.SCRAPE_SOURCE === 'truthsocial' ? new TruthSocialScraperService() : new NitterScraperService();
   const blueskyService = new BlueskyService();
 
   await Promise.all([

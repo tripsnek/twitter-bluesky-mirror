@@ -1,24 +1,20 @@
 import { AccountPair, AgentConfig, TweetData } from './types';
 import { StorageService } from './services/storage-service';
-// import { TwitterScraperService } from './services/twitter-scraper-service';
 import { BlueskyService } from './services/bluesky-service';
-import fs from 'fs/promises';
 import { ScraperService } from './services/scraper-service';
-import { NitterScraperService } from './services/nitter-scraper-service';
-import { TwitterScraperService } from './services/twitter-scraper-service';
 
 export class CrossPostAgent {
   private readonly config: AgentConfig;
 
   private lastCheckedTweets: Map<string, TweetData[]>;
 
-  public static SCRAPE_SOURCE = 'nitter';
+  public static SCRAPE_SOURCE = 'truthsocial';
+  // public static SCRAPE_SOURCE = 'nitter';
   // public static SCRAPE_SOURCE = 'twitter';
 
 
   constructor(config: AgentConfig, public scraperService: ScraperService, public blueskyService: BlueskyService) {
     this.config = config;
-    // this.twitterService = new TwitterScraperService();
 
     this.lastCheckedTweets = new Map();
   }
