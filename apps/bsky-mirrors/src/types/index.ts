@@ -5,6 +5,7 @@ export interface TweetData {
   timestamp: string;
   images: string[];
   videos: string[];
+  videoThumbnails?: Buffer[];  // Add this new field
   postedToBluesky: boolean;
   sourceAccount: string;
   platform: string;

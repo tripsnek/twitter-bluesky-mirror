@@ -115,38 +115,29 @@ export class TruthSocialScraperService implements ScraperService {
           const postLink = wrapper.querySelector('a[href*="posts"]')?.getAttribute('href') || '';
           const id = postLink ? postLink.split('/').pop() || '' : '';
           
+          // Extract thumbnail URLs and video URLs together
+          const videoData: { videoUrl: string, thumbnailUrl: string }[] = [];
+          wrapper.querySelectorAll('video').forEach((video: Element) => {
+            // Get video source and its thumbnail
+            const sources = video.querySelectorAll('source');
+            const videoUrl = sources[0]?.getAttribute('src') || video.getAttribute('src');
+            
+            // Get the video thumbnail from the poster attribute or any nearby img
+            const posterUrl = video.getAttribute('poster');
+            const thumbnailImg = wrapper.querySelector('.media-gallery img[src*="/original/"]');
+            const thumbnailUrl = posterUrl || thumbnailImg?.getAttribute('src');
+  
+            if (videoUrl && thumbnailUrl) {
+              videoData.push({ videoUrl, thumbnailUrl });
+            }
+          });
+  
           // Extract image URLs
           const imageUrls: string[] = [];
           wrapper.querySelectorAll('.media-gallery img').forEach((img: Element) => {
             const src = (img as HTMLImageElement).src;
-            if (src) {
-              // Convert from small to original size
+            if (src && !videoData.some(v => v.thumbnailUrl === src)) { // Don't duplicate video thumbnails
               imageUrls.push(src.replace('/small/', '/original/'));
-            }
-          });
-  
-          // Extract video URLs - Handle Truth Social video format
-          const videoUrls: string[] = [];
-          wrapper.querySelectorAll('video').forEach((video: Element) => {
-            // Get video source elements
-            const sources = video.querySelectorAll('source');
-            if (sources.length > 0) {
-              // Get all available video sources (different qualities)
-              sources.forEach((source: Element) => {
-                const videoUrl = source.getAttribute('src');
-                const dataQuality = source.getAttribute('data-quality');
-                if (videoUrl) {
-                  videoUrls.push(videoUrl);
-                  console.log(`Found video source: ${videoUrl} (${dataQuality})`);
-                }
-              });
-            } else {
-              // Handle videos with direct src attribute
-              const videoSrc = video.getAttribute('src');
-              if (videoSrc) {
-                videoUrls.push(videoSrc);
-                console.log(`Found direct video source: ${videoSrc}`);
-              }
             }
           });
   
@@ -155,11 +146,11 @@ export class TruthSocialScraperService implements ScraperService {
               id,
               text: text || '[No Text Content]',
               timestamp: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString(),
-              imageUrls, // Store URLs for processing
-              videoUrls, // Store video URLs
+              imageUrls,
+              videoData,
               sourceAccount: profileUrl,
-              postedToBluesky: false,
-              platform: 'truthsocial'
+              platform: 'truthsocial',
+              postedToBluesky: false
             });
           }
         } catch (error) {
@@ -214,19 +205,57 @@ export class TruthSocialScraperService implements ScraperService {
           post.images = images.filter(img => img !== null);
         }
   
-        // Handle videos - store video URLs directly
-        if (post.videoUrls && post.videoUrls.length > 0) {
-          // For video URLs, we'll use the highest quality version available
-          post.videos = post.videoUrls.filter((url: string) => url.includes('haa.mp4'));
-          // If no high quality version found, use whatever is available
-          if (post.videos.length === 0) {
-            post.videos = [post.videoUrls[0]];
-          }
+        // Handle video thumbnails
+        if (post.videoData && post.videoData.length > 0) {
+          const thumbnails = await Promise.all(
+            post.videoData.map(async (data: { videoUrl: string, thumbnailUrl: string }) => {
+              try {
+                const imagePage = await this.browser.newPage();
+                try {
+                  await imagePage.goto(data.thumbnailUrl, {
+                    waitUntil: 'networkidle0',
+                    timeout: 10000
+                  });
+  
+                  const base64Image = await imagePage.evaluate(async () => {
+                    const img = document.querySelector('img');
+                    if (!img) return null;
+  
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(img, 0, 0);
+                    return canvas.toDataURL('image/jpeg', 0.95);
+                  });
+  
+                  if (!base64Image) return null;
+                  const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+                  const imageBuffer = Buffer.from(base64Data, 'base64');
+                  return {
+                    videoUrl: data.videoUrl,
+                    thumbnail: imageBuffer
+                  };
+                } finally {
+                  await imagePage.close();
+                }
+              } catch (error) {
+                console.error(`Error capturing thumbnail from ${data.thumbnailUrl}:`, error);
+                return {
+                  videoUrl: data.videoUrl,
+                  thumbnail: null
+                };
+              }
+            })
+          );
+  
+          post.videos = thumbnails.map(t => t.videoUrl).filter(Boolean);
+          post.videoThumbnails = thumbnails.map(t => t.thumbnail).filter(Boolean);
         }
   
-        // Remove the URL arrays as we've processed them
+        // Clean up intermediate data
         delete post.imageUrls;
-        delete post.videoUrls;
+        delete post.videoData;
         return post;
       })
     );
