@@ -278,7 +278,10 @@ export class BlueskyPoster {
   private async createSinglePost(
     text: string,
     embed: any,
-    parentRef?: { uri: string; cid: string },
+    threadInfo?: { 
+      root?: { uri: string; cid: string },
+      parent: { uri: string; cid: string }
+    },
     timestamp?: string
   ) {
     const rt = new RichText({ text });
@@ -290,10 +293,10 @@ export class BlueskyPoster {
       embed,
     };
 
-    if (parentRef) {
+    if (threadInfo) {
       postData.reply = {
-        root: parentRef,
-        parent: parentRef,
+        root: threadInfo.root || threadInfo.parent, // First post is both root and parent
+        parent: threadInfo.parent
       };
     }
 
@@ -467,43 +470,50 @@ export class BlueskyPoster {
       // Create posts
       // Never try to post a single post if we have multiple chunks
       if (textChunks.length > 1 || textChunks[0].length > this.CHAR_LIMIT) {
-        // Create thread
-        let parentRef;
+        // Create thread for multiple chunks
+        let rootRef: { uri: string; cid: string } | undefined;
+        let parentRef: { uri: string; cid: string } | undefined;
         const posts = [];
-
+  
         for (let i = 0; i < textChunks.length; i++) {
           const chunk = textChunks[i];
           const postEmbed = i === 0 ? embed : undefined;
-
-          const threadText =
-            textChunks.length > 1
-              ? `${i + 1}/${textChunks.length} ${chunk}`
-              : chunk;
-
-          console.log(
-            `Posting chunk ${i + 1} with length ${threadText.length}:`,
-            threadText
-          );
-
+          const threadMarker = `${i + 1}/${textChunks.length} `;
+  
+          let threadInfo;
+          if (i > 0 && parentRef) {  // Only create threadInfo if we have a parent and it's not the first post
+            threadInfo = {
+              root: rootRef,
+              parent: parentRef
+            };
+          }
+  
           const post = await this.createSinglePost(
-            threadText,
+            threadMarker + chunk,
             postEmbed,
-            parentRef,
+            threadInfo,
             postData.timestamp
           );
-
+  
           posts.push(post);
+          
+          if (i === 0) {
+            rootRef = { uri: post.uri, cid: post.cid };
+          }
           parentRef = { uri: post.uri, cid: post.cid };
-
-          await new Promise((f) => setTimeout(f, 1000));
+  
+          // Add small delay between posts to avoid rate limits
+          if (i < textChunks.length - 1) {
+            await new Promise(f => setTimeout(f, 1000));
+          }
         }
-
+  
         return {
           success: true,
           uri: posts[0].uri,
           cid: posts[0].cid,
-          isThread: textChunks.length > 1,
-          threadPosts: posts.map((p) => ({ uri: p.uri, cid: p.cid })),
+          isThread: true,
+          threadPosts: posts.map(p => ({ uri: p.uri, cid: p.cid }))
         };
       } else {
         // Only create a single post if we have one small chunk
