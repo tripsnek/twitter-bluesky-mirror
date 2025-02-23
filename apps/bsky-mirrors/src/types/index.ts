@@ -11,6 +11,7 @@ export interface TweetData {
 
 export interface AccountPair {
   twitter: string;
+  platform: string;
   bluesky: {
     identifier: string;
     password: string;

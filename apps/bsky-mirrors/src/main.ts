@@ -4,13 +4,12 @@ import { AgentConfig } from './types';
 import { BlueskyService } from './services/bluesky-service';
 import { TwitterScraperService } from './services/twitter-scraper-service';
 import { NitterScraperService } from './services/nitter-scraper-service';
+import { TruthSocialScraperService } from './services/truth-social-scraper.service';
 import { ScraperService } from './services/scraper-service';
 import fs from 'fs/promises';
-import { TruthSocialScraperService } from './services/truth-social-scraper.service';
+import { ScraperFactory } from './services/scraper-factory';
 
 dotenv.config();
-
-const urlPre = CrossPostAgent.SCRAPE_SOURCE == 'nitter' ? 'https://' + process.env.NITTER_HOST : CrossPostAgent.SCRAPE_SOURCE=='truthsocial' ? 'https://truthsocial.com' : 'https://x.com';
 
 interface BlueskyCredentials {
   identifier: string;
@@ -18,7 +17,8 @@ interface BlueskyCredentials {
 }
 
 interface AccountPair {
-  twitter: string;
+  twitter: string;  // Using 'twitter' for backward compatibility
+  platform: 'nitter' | 'twitter' | 'truthsocial';
   bluesky: BlueskyCredentials;
   storageDir: string;
 }
@@ -28,28 +28,50 @@ const agentConfig: AgentConfig = {
   CHECK_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes
 };
 
-function loadMirrorConfigurations(): AccountPair[] {
+function getPlatformBaseUrl(platform: string): string {
+  switch (platform) {
+    case 'nitter':
+      return 'https://' + process.env.NITTER_HOST;
+    case 'truthsocial':
+      return 'https://truthsocial.com';
+    case 'twitter':
+      return 'https://x.com';
+    default:
+      throw new Error(`Unsupported platform: ${platform}`);
+  }
+}
 
+function loadMirrorConfigurations(): AccountPair[] {
   const pairs: AccountPair[] = [];
   let configIndex = 1;
 
   while (true) {
-    const twitterId = process.env[`MIRROR_${configIndex}_TWITTER_IDENTIFIER`];
+    const identifier = process.env[`MIRROR_${configIndex}_IDENTIFIER`];
+    let platform = process.env[`MIRROR_${configIndex}_PLATFORM`];
+    if(!platform) platform = 'nitter';
     const blueskyId = process.env[`MIRROR_${configIndex}_BLUESKY_IDENTIFIER`];
     const blueskyPassword = process.env[`MIRROR_${configIndex}_BLUESKY_PASSWORD`];
 
     // If we don't find a configuration for this index, we're done
-    if (!twitterId || !blueskyId || !blueskyPassword) {
+    if (!identifier || !platform || !blueskyId || !blueskyPassword) {
       break;
     }
 
+    // Validate platform type
+    if (!['nitter', 'twitter', 'truthsocial'].includes(platform)) {
+      console.error(`Invalid platform ${platform} for account ${identifier}, skipping...`);
+      configIndex++;
+      continue;
+    }
+
     pairs.push({
-      twitter: `${urlPre}/${twitterId}`,
+      twitter: `${getPlatformBaseUrl(platform)}/${identifier}`,
+      platform: platform as 'nitter' | 'twitter' | 'truthsocial',
       bluesky: {
         identifier: blueskyId,
         password: blueskyPassword,
       },
-      storageDir: `./storage/${twitterId.toLowerCase()}`
+      storageDir: `./storage/${identifier.toLowerCase()}`
     });
 
     configIndex++;
@@ -58,26 +80,19 @@ function loadMirrorConfigurations(): AccountPair[] {
   return pairs;
 }
 
-runAgents();
-
 async function runAgents() {
-  const scraperService =
-    CrossPostAgent.SCRAPE_SOURCE === 'twitter'
-      ? new TwitterScraperService()
-      : CrossPostAgent.SCRAPE_SOURCE === 'truthsocial' ? new TruthSocialScraperService() : new NitterScraperService();
+  const scraperFactory = new ScraperFactory();
   const blueskyService = new BlueskyService();
 
-  await Promise.all([
-    scraperService.initialize(),
-    blueskyService.initialize(agentConfig.accountPairs),
-  ]);
+  // Initialize Bluesky service
+  await blueskyService.initialize(agentConfig.accountPairs);
 
   // Ensure storage directories exist
   for (const pair of agentConfig.accountPairs) {
     await fs.mkdir(pair.storageDir, { recursive: true });
   }
 
-  const agent = new CrossPostAgent(agentConfig, scraperService, blueskyService);
+  const agent = new CrossPostAgent(agentConfig, scraperFactory, blueskyService);
 
   process.on('SIGINT', async () => {
     console.log('Cleaning up...');
@@ -88,3 +103,4 @@ async function runAgents() {
   agent.start().catch(console.error);
 }
 
+runAgents();
