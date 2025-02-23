@@ -86,8 +86,9 @@ export class TruthSocialScraperService implements ScraperService {
     page: any,
     profileUrl: string
   ): Promise<TweetData[]> {
-    return await page.evaluate((profileUrl: string) => {
-      const extractedTweets: any[] = [];
+    // First get the post information
+    const posts = await page.evaluate((profileUrl: string) => {
+      const extractedPosts: any[] = [];
       
       // Get all status divs
       const postElements = document.querySelectorAll('[data-testid="status"]');
@@ -114,34 +115,51 @@ export class TruthSocialScraperService implements ScraperService {
           const postLink = wrapper.querySelector('a[href*="posts"]')?.getAttribute('href') || '';
           const id = postLink ? postLink.split('/').pop() || '' : '';
           
-          // Extract media
-          const images: string[] = [];
+          // Extract image URLs
+          const imageUrls: string[] = [];
           wrapper.querySelectorAll('.media-gallery img').forEach((img: Element) => {
             const src = (img as HTMLImageElement).src;
             if (src) {
-              const fullResUrl = src.replace('/small/', '/original/');
-              images.push(fullResUrl);
+              // Convert from small to original size
+              imageUrls.push(src.replace('/small/', '/original/'));
             }
           });
   
-          const videos: string[] = [];
+          // Extract video URLs - Handle Truth Social video format
+          const videoUrls: string[] = [];
           wrapper.querySelectorAll('video').forEach((video: Element) => {
+            // Get video source elements
             const sources = video.querySelectorAll('source');
             if (sources.length > 0) {
-              const videoUrl = sources[0]?.getAttribute('src');
-              if (videoUrl) videos.push(videoUrl);
+              // Get all available video sources (different qualities)
+              sources.forEach((source: Element) => {
+                const videoUrl = source.getAttribute('src');
+                const dataQuality = source.getAttribute('data-quality');
+                if (videoUrl) {
+                  videoUrls.push(videoUrl);
+                  console.log(`Found video source: ${videoUrl} (${dataQuality})`);
+                }
+              });
+            } else {
+              // Handle videos with direct src attribute
+              const videoSrc = video.getAttribute('src');
+              if (videoSrc) {
+                videoUrls.push(videoSrc);
+                console.log(`Found direct video source: ${videoSrc}`);
+              }
             }
           });
   
           if (id) {
-            extractedTweets.push({
+            extractedPosts.push({
               id,
               text: text || '[No Text Content]',
               timestamp: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString(),
-              images,
-              videos,
+              imageUrls, // Store URLs for processing
+              videoUrls, // Store video URLs
               sourceAccount: profileUrl,
-              postedToBluesky: false
+              postedToBluesky: false,
+              platform: 'truthsocial'
             });
           }
         } catch (error) {
@@ -149,8 +167,74 @@ export class TruthSocialScraperService implements ScraperService {
         }
       });
       
-      return extractedTweets;
+      return extractedPosts;
     }, profileUrl);
+  
+    // Now fetch each media item using Puppeteer's page context
+    const tweetsWithMedia = await Promise.all(
+      posts.map(async (post: any) => {
+        // Handle images
+        if (post.imageUrls && post.imageUrls.length > 0) {
+          const images = await Promise.all(
+            post.imageUrls.map(async (url: string) => {
+              try {
+                const imagePage = await this.browser.newPage();
+                try {
+                  await imagePage.goto(url, {
+                    waitUntil: 'networkidle0',
+                    timeout: 10000
+                  });
+  
+                  const base64Image = await imagePage.evaluate(async () => {
+                    const img = document.querySelector('img');
+                    if (!img) return null;
+  
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(img, 0, 0);
+                    return canvas.toDataURL('image/jpeg', 0.95);
+                  });
+  
+                  if (!base64Image) return null;
+                  const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+                  const imageBuffer = Buffer.from(base64Data, 'base64');
+                  return imageBuffer;
+                } finally {
+                  await imagePage.close();
+                }
+              } catch (error) {
+                console.error(`Error capturing image from ${url}:`, error);
+                return null;
+              }
+            })
+          );
+  
+          post.images = images.filter(img => img !== null);
+        }
+  
+        // Handle videos - store video URLs directly
+        if (post.videoUrls && post.videoUrls.length > 0) {
+          // For video URLs, we'll use the highest quality version available
+          post.videos = post.videoUrls.filter((url: string) => url.includes('haa.mp4'));
+          // If no high quality version found, use whatever is available
+          if (post.videos.length === 0) {
+            post.videos = [post.videoUrls[0]];
+          }
+        }
+  
+        // Remove the URL arrays as we've processed them
+        delete post.imageUrls;
+        delete post.videoUrls;
+        return post;
+      })
+    );
+  
+    // Sort by timestamp, newest first
+    return tweetsWithMedia.sort((a, b) => {
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    });
   }
   // Helper method to extract username from profile URL
   private extractUsernameFromUrl(url: string): string {
