@@ -282,6 +282,7 @@ export class NitterScraperService implements ScraperService {
             videos: videoLinks,
             sourceAccount: nitterUrl,
             postedToBluesky: false,
+            platform:'nitter'
           };
 
           extractedTweets.push(extracted);

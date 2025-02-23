@@ -7,6 +7,7 @@ export interface TweetData {
   videos: string[];
   postedToBluesky: boolean;
   sourceAccount: string;
+  platform: string;
 }
 
 export interface AccountPair {

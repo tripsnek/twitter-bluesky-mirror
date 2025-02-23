@@ -224,7 +224,8 @@ export class TwitterScraperService implements ScraperService{
             images: images,
             videos: videoLinks,
             sourceAccount: twitterUrl,
-            postedToBluesky: false
+            postedToBluesky: false,
+            platform:'twitter'
           };
           extractedTweets.push(extracted);
         }
