@@ -54,7 +54,7 @@ export class TruthSocialScraperService implements ScraperService {
         window.scrollTo(0, 1000);
         
         // Wait a moment for content to load
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
       });
   
       // Get posts after scrolling
