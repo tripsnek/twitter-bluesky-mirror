@@ -25,7 +25,7 @@ interface AccountPair {
 
 const agentConfig: AgentConfig = {
   accountPairs: loadMirrorConfigurations(),
-  CHECK_INTERVAL_MS: 10 * 60 * 1000, // 10 minutes
+  CHECK_INTERVAL_MS: 26 * 60 * 1000, // 10 minutes
 };
 
 function getPlatformBaseUrl(platform: string): string {
