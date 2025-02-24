@@ -222,8 +222,12 @@ export class BlueskyPoster {
   private readonly CHAR_LIMIT = 299;
 
   private splitTextIntoChunks(text: string): string[] {
+    
     // Leave more room for thread markers (e.g., "1/5 " = 4 chars)
     const SAFE_LIMIT = this.CHAR_LIMIT - 20;
+
+    //no chunking if text is already safe
+    if(text.length<SAFE_LIMIT) return [text];
     const chunks: string[] = [];
 
     // First try splitting on sentences
