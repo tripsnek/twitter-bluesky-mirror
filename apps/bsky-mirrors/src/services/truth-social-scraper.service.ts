@@ -47,33 +47,51 @@ export class TruthSocialScraperService implements ScraperService {
   
       // Get initial posts
       const initialTweets = await this.extractTweetsFromPage(page, truthProfileUrl);
-  
-      // Do one gentle scroll
-      await page.evaluate(async () => {
-        // Scroll just enough to trigger a bit more content loading - about 1000px
-        window.scrollTo(0, 1000);
+      
+      let allTweets = [...initialTweets];
+      const maxScrolls = 5; // Number of scroll increments
+      const scrollHeight = 800; // Height to scroll each time
+      const waitTime = 2000; // Time to wait after each scroll in milliseconds
+      
+      // Scroll multiple times to load more content
+      for (let i = 0; i < maxScrolls; i++) {
+        // Scroll down incrementally and wait for content to load
+        await page.evaluate((scrollHeight : any, waitTime : any) => {
+          window.scrollBy(0, scrollHeight);
+          return new Promise(resolve => setTimeout(resolve, waitTime));
+        }, scrollHeight, waitTime);
         
-        // Wait a moment for content to load
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      });
-  
-      // Get posts after scrolling
-      const moreTweets = await this.extractTweetsFromPage(page, truthProfileUrl);
-  
-      // Combine and deduplicate tweets
-      const allTweets = [...initialTweets];
-      for (const tweet of moreTweets) {
-        if (!allTweets.find(t => t.id === tweet.id)) {
-          allTweets.push(tweet);
+        // Extract tweets after this scroll
+        const newTweets = await this.extractTweetsFromPage(page, truthProfileUrl);
+        
+        // Add new tweets to the collection (without duplicates)
+        for (const tweet of newTweets) {
+          if (!allTweets.find(t => t.id === tweet.id)) {
+            allTweets.push(tweet);
+          }
+        }
+        
+        // Optional: Stop scrolling if no new tweets were found in this batch
+        if (newTweets.length === 0 || 
+            newTweets.every(t => initialTweets.some(it => it.id === t.id))) {
+          if (this.DEBUG) {
+            console.log(`No new tweets found after scroll ${i+1}. Stopping.`);
+          }
+          break;
         }
       }
   
       if (this.DEBUG) {
-        console.log(`Found ${allTweets.length} total tweets`);
+        console.log(`Found ${allTweets.length} total tweets after scrolling`);
       }
   
+      // Final deduplication to ensure uniqueness
+      const uniqueTweets = Array.from(
+        new Map(allTweets.map(tweet => [tweet.id, tweet])).values()
+      );
+  
       // Sort by timestamp, newest first
-      return allTweets.sort((a, b) => {
+      return uniqueTweets.sort((a, b) => {
         return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
       });
   
@@ -144,7 +162,7 @@ export class TruthSocialScraperService implements ScraperService {
           if (id) {
             extractedPosts.push({
               id,
-              text: text || '[No Text Content]',
+              text: text,
               timestamp: timestamp ? new Date(timestamp).toISOString() : new Date().toISOString(),
               imageUrls,
               videoData,
@@ -260,11 +278,9 @@ export class TruthSocialScraperService implements ScraperService {
       })
     );
   
-    // Sort by timestamp, newest first
-    return tweetsWithMedia.sort((a, b) => {
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-    });
+    return tweetsWithMedia;
   }
+  
   // Helper method to extract username from profile URL
   private extractUsernameFromUrl(url: string): string {
     const match = url.match(/@([^/]+)/);
