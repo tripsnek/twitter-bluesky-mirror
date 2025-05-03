@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "out-tsc/reddit-monitors",
+    "types": ["node"],
+    "rootDir": "src",
+    "tsBuildInfoFile": "out-tsc/reddit-monitors/tsconfig.app.tsbuildinfo",
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": []
+}
