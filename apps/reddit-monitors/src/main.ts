@@ -1,6 +1,7 @@
-// src/main.ts
+// main.ts
 import * as dotenv from 'dotenv';
 import { RedditMonitorService } from './services/reddit-monitor-service';
+
 // Load environment variables
 dotenv.config();
 
@@ -9,7 +10,8 @@ function validateEnv(): boolean {
   const requiredVars = [
     'REDDIT_CLIENT_ID',
     'REDDIT_CLIENT_SECRET',
-    'REDDIT_REDIRECT_URI'
+    'REDDIT_USERNAME',
+    'REDDIT_PASSWORD'
   ];
   
   const missing = requiredVars.filter(varName => !process.env[varName]);
@@ -37,6 +39,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   
+  // Create a more specific User-Agent
+  // Format: platform:app ID:version (by /u/username)
+  const userAgent = process.env.USER_AGENT || 
+    `nodejs:com.yourdomain.redditmonitor:v1.0.0 (by /u/${process.env.REDDIT_USERNAME})`;
+  
+  console.log(`Using User-Agent: ${userAgent}`);
+  
   // Create monitor configuration
   const config = {
     subreddit: process.env.SUBREDDIT || 'travel',
@@ -44,8 +53,9 @@ async function main(): Promise<void> {
     keywords: (process.env.KEYWORDS || 'travel,planning,app').split(','),
     clientId: process.env.REDDIT_CLIENT_ID!,
     clientSecret: process.env.REDDIT_CLIENT_SECRET!,
-    redirectUri: process.env.REDDIT_REDIRECT_URI!,
-    userAgent: process.env.USER_AGENT || 'RedditMonitor/1.0 by YourName',
+    username: process.env.REDDIT_USERNAME!,
+    password: process.env.REDDIT_PASSWORD!,
+    userAgent: userAgent,
     onMatchFound: handleMatchedPost
   };
   
@@ -87,9 +97,3 @@ main().catch(error => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
-
-// ##WHERE I AM LEAVING OFF:
-// all code is compiling
-// have not run anything
-//have not put credentials into .env for reddit
-//see "Monitor Travel Planning App" convo
