@@ -2,10 +2,6 @@ import * as dotenv from 'dotenv';
 import { CrossPostAgent } from './cross-post-agent';
 import { AgentConfig } from './types';
 import { BlueskyService } from './services/bluesky-service';
-import { TwitterScraperService } from './services/twitter-scraper-service';
-import { NitterScraperService } from './services/nitter-scraper-service';
-import { TruthSocialScraperService } from './services/truth-social-scraper.service';
-import { ScraperService } from './services/scraper-service';
 import fs from 'fs/promises';
 import { ScraperFactory } from './services/scraper-factory';
 
